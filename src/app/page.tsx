@@ -11,6 +11,7 @@ import {
 
 const CLIENT_ID =
   "4f7bd95420ec493e56fbc0ccb1d8506b02c1bd14097312abad2eaecaa788927d";
+const BASE_URL = "https://prestige-cloud.vercel.app";
 const SCOPES = [
   "profile",
   "connections:read",
@@ -85,6 +86,7 @@ export default function Home() {
           <TestSection title="Auth + API Cloud">
             <PrestigeAPICloud
               clientId={CLIENT_ID}
+              baseUrl={BASE_URL}
               scopes={SCOPES}
               redirectUri={redirectUri}
               onReady={() => console.log("[test-app] onReady fired")}
@@ -103,6 +105,7 @@ export default function Home() {
           <TestSection title="Billing">
             <PrestigeBilling
               clientId={CLIENT_ID}
+              baseUrl={BASE_URL}
               scopes={SCOPES}
               redirectUri={redirectUri}
             />
@@ -113,6 +116,7 @@ export default function Home() {
           <TestSection title="Usage">
             <PrestigeUsage
               clientId={CLIENT_ID}
+              baseUrl={BASE_URL}
               scopes={SCOPES}
               redirectUri={redirectUri}
             />
@@ -123,6 +127,7 @@ export default function Home() {
           <TestSection title="Health Check">
             <PrestigeHealthCheck
               clientId={CLIENT_ID}
+              baseUrl={BASE_URL}
               onComplete={(results) =>
                 console.log("[test-app] health check:", results)
               }
@@ -164,6 +169,7 @@ function TestSection({
 function DebugInfo({ redirectUri }: { redirectUri: string }) {
   const { state, tokens, appConfig, login, logout } = usePrestigeAuth({
     clientId: CLIENT_ID,
+    baseUrl: BASE_URL,
     scopes: SCOPES,
     redirectUri,
   });
