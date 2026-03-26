@@ -10,7 +10,7 @@ import {
 } from "@prestige-app-cloud/react";
 
 const CLIENT_ID =
-  "c9064a0e01e19daf8b913deac0be596070dca75489f1c712060112f66b323462";
+  "4f7bd95420ec493e56fbc0ccb1d8506b02c1bd14097312abad2eaecaa788927d";
 const SCOPES = [
   "profile",
   "connections:read",
