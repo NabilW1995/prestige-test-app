@@ -12,15 +12,10 @@ import {
 const CLIENT_ID =
   "4f7bd95420ec493e56fbc0ccb1d8506b02c1bd14097312abad2eaecaa788927d";
 const BASE_URL = "https://prestige-cloud.vercel.app";
-const SCOPES = [
-  "profile",
-  "connections:read",
-  "connections:write",
-  "connections:proxy",
-  "billing:read",
-  "billing:manage",
-  "billing:usage",
-];
+// Scopes per feature — customer only sees what's relevant
+const AUTH_SCOPES = ["profile", "connections:read", "connections:write", "connections:proxy"];
+const BILLING_SCOPES = ["profile", "billing:read", "billing:manage"];
+const USAGE_SCOPES = ["profile", "billing:usage"];
 
 type Section = "auth" | "apis" | "billing" | "usage" | "health";
 
@@ -87,7 +82,7 @@ export default function Home() {
             <PrestigeAPICloud
               clientId={CLIENT_ID}
               baseUrl={BASE_URL}
-              scopes={SCOPES}
+              scopes={AUTH_SCOPES}
               redirectUri={redirectUri}
               onReady={() => console.log("[test-app] onReady fired")}
               onError={(err) => console.error("[test-app] onError:", err)}
@@ -106,7 +101,7 @@ export default function Home() {
             <PrestigeBilling
               clientId={CLIENT_ID}
               baseUrl={BASE_URL}
-              scopes={SCOPES}
+              scopes={BILLING_SCOPES}
               redirectUri={redirectUri}
             />
           </TestSection>
@@ -117,7 +112,7 @@ export default function Home() {
             <PrestigeUsage
               clientId={CLIENT_ID}
               baseUrl={BASE_URL}
-              scopes={SCOPES}
+              scopes={USAGE_SCOPES}
               redirectUri={redirectUri}
             />
           </TestSection>
@@ -170,7 +165,7 @@ function DebugInfo({ redirectUri }: { redirectUri: string }) {
   const { state, tokens, appConfig, login, logout } = usePrestigeAuth({
     clientId: CLIENT_ID,
     baseUrl: BASE_URL,
-    scopes: SCOPES,
+    scopes: AUTH_SCOPES,
     redirectUri,
   });
 
@@ -210,7 +205,7 @@ function DebugInfo({ redirectUri }: { redirectUri: string }) {
       </div>
       <div className="flex gap-2">
         <span className="text-white/40">scopes:</span>
-        <span className="text-white/50">{SCOPES.join(", ")}</span>
+        <span className="text-white/50">{AUTH_SCOPES.join(", ")}</span>
       </div>
       <div className="flex gap-2 mt-2">
         {state === "disconnected" && (
