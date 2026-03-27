@@ -463,10 +463,9 @@ export default function ConnectionsPage() {
   // suppress the loading skeleton on background re-fetches.
   const hasLoadedOnce = useRef(false);
 
-  // -- Load manual values from localStorage on mount --
-  useEffect(() => {
-    setAllManual(client.getAllManualValues());
-  }, [client]);
+  // NOTE: We do NOT auto-load manual values from localStorage.
+  // Manual fill means starting with BLANK fields. Values are only
+  // shown after the user explicitly saves them in this session.
 
   // -- Fetch public config (always, even when authenticated) --
   // This ensures we respect the latest integrationConfig from the
@@ -545,54 +544,52 @@ export default function ConnectionsPage() {
       (t) => t.templateId,
     );
 
+    // Use the public config templates as the base — these are the templates
+    // the developer selected in the dashboard. This ensures we always show
+    // the right templates regardless of connection status.
+    const baseTemplates = effectiveConfig?.templates ?? [];
+
+    // If connected AND we got connections back, merge fill status
     if (isConnected && connections.length > 0) {
-      // Build cards from the connections API response (has live fill status)
-      const connCards = connections.map((conn) => {
-        const tpl = effectiveConfig?.templates.find(
-          (t) => t.templateId === conn.templateId,
-        );
+      const connMap = new Map(connections.map((c) => [c.templateId, c]));
+
+      return baseTemplates.map((tpl) => {
+        const conn = connMap.get(tpl.templateId);
+        if (conn) {
+          return {
+            templateId: tpl.templateId,
+            templateName: tpl.templateName,
+            templateSlug: tpl.templateSlug,
+            type: tpl.type,
+            placeholders: tpl.placeholders,
+            filled: conn.hasConnection,
+            filledValues: conn.filledValues,
+          };
+        }
+        // Template exists in config but no connection yet — show as empty
         return {
-          templateId: conn.templateId,
-          templateName: conn.templateName,
-          templateSlug: conn.templateSlug,
-          type: conn.type,
-          placeholders:
-            tpl?.placeholders ??
-            Object.keys(conn.filledValues).map((k) => ({
-              name: k,
-              label: k
-                .replace(/_/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase()),
-              type: "text",
-            })),
-          filled: conn.hasConnection,
-          filledValues: conn.filledValues,
+          templateId: tpl.templateId,
+          templateName: tpl.templateName,
+          templateSlug: tpl.templateSlug,
+          type: tpl.type,
+          placeholders: tpl.placeholders,
+          filled: false,
+          filledValues: {},
         };
       });
-
-      // Filter to only the templates selected in the dashboard config
-      if (allowedTemplateIds && allowedTemplateIds.length > 0) {
-        return connCards.filter((c) =>
-          allowedTemplateIds.includes(c.templateId),
-        );
-      }
-      return connCards;
     }
 
-    // Disconnected: fall back to effectiveConfig templates (public config)
-    if (effectiveConfig?.templates) {
-      return effectiveConfig.templates.map((tpl) => ({
-        templateId: tpl.templateId,
-        templateName: tpl.templateName,
-        templateSlug: tpl.templateSlug,
-        type: tpl.type,
-        placeholders: tpl.placeholders,
-        filled: false,
-        filledValues: {},
-      }));
-    }
-
-    return [];
+    // Disconnected OR connected but no connections returned:
+    // show all templates as empty (ready for manual fill)
+    return baseTemplates.map((tpl) => ({
+      templateId: tpl.templateId,
+      templateName: tpl.templateName,
+      templateSlug: tpl.templateSlug,
+      type: tpl.type,
+      placeholders: tpl.placeholders,
+      filled: false,
+      filledValues: {},
+    }));
   })();
 
   // -- Derive theme accent color from config --
