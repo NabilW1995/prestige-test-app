@@ -7,6 +7,13 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import type { Connection, AppConfig } from "@prestige-app-cloud/sdk";
 
 // ---------------------------------------------------------------------------
+// Design tokens — terminal aesthetic
+// ---------------------------------------------------------------------------
+
+const terminalFont =
+  "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace";
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -31,6 +38,19 @@ interface CardData {
   filledValues: Record<string, boolean | string>;
 }
 
+/**
+ * Public config returned by the /api/v1/app-config/public endpoint.
+ * Used to control which templates to show, whether to show the
+ * account prompt, and theme settings.
+ */
+interface PublicConfig {
+  appName: string;
+  showAccountPrompt: boolean;
+  requireAccount: boolean;
+  templates: AppConfig["templates"];
+  theme?: AppConfig["theme"];
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -38,11 +58,11 @@ interface CardData {
 /** Map a template type string to a human-readable badge label. */
 function typeBadgeLabel(type: string): string {
   const MAP: Record<string, string> = {
-    standard_api: "Standard API",
-    magic_api: "Magic API",
-    custom: "Custom",
-    oauth: "OAuth",
-    webhook: "Webhook",
+    standard_api: "std-api",
+    magic_api: "magic-api",
+    custom: "custom",
+    oauth: "oauth",
+    webhook: "webhook",
   };
   return MAP[type] ?? type;
 }
@@ -53,7 +73,7 @@ function typeBadgeLabel(type: string): string {
  */
 function maskValue(value: string): string {
   if (value.length <= 8) return "****";
-  return `${value.slice(0, 3)}...${ value.slice(-4)}`;
+  return `${value.slice(0, 3)}...${value.slice(-4)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,20 +81,21 @@ function maskValue(value: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * A single connection card that displays its placeholders.
- * Supports both "filled from cloud" and "manual entry" modes.
+ * Terminal-style connection card. Dark background, monospace font,
+ * green accent labels. No macOS window chrome — just a mini terminal block.
  */
 function ConnectionCard({
   card,
   manualValues,
+  requireAccount,
   onSaveManual,
 }: {
   card: CardData;
   manualValues: Record<string, string>;
+  requireAccount: boolean;
   onSaveManual: (templateId: string, values: Record<string, string>) => void;
 }) {
   // Local draft state for manual form inputs.
-  // Initialised from any previously-saved manual values.
   const [draft, setDraft] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const ph of card.placeholders) {
@@ -90,7 +111,6 @@ function ConnectionCard({
   };
 
   const handleSave = () => {
-    // Only persist non-empty values
     const nonEmpty: Record<string, string> = {};
     for (const [k, v] of Object.entries(draft)) {
       if (v.trim()) nonEmpty[k] = v.trim();
@@ -99,75 +119,129 @@ function ConnectionCard({
     setSaved(true);
   };
 
-  // Determine whether every placeholder is cloud-filled
   const allFilled = card.filled;
 
+  // Determine whether manual fill is allowed
+  const canManualFill = !requireAccount;
+
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-6 flex flex-col gap-4">
-      {/* Header: template name + type badge */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-white truncate">
+    <div
+      style={{
+        background: "#111",
+        border: "1px solid #222",
+        borderRadius: "8px",
+        padding: "16px",
+        fontFamily: terminalFont,
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+      }}
+    >
+      {/* Card header: template name + type badge + status */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "8px",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#e0e0e0",
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {card.templateName}
-          </h3>
-          <span className="inline-block mt-1 px-2.5 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/60">
+          </div>
+          <span
+            style={{
+              display: "inline-block",
+              marginTop: "4px",
+              padding: "1px 8px",
+              fontSize: "10px",
+              color: "#888",
+              border: "1px solid #333",
+              borderRadius: "4px",
+              background: "#0a0a0a",
+            }}
+          >
             {typeBadgeLabel(card.type)}
           </span>
         </div>
 
         {allFilled && (
-          <span className="shrink-0 inline-flex items-center gap-1.5 text-emerald-400 text-xs font-medium mt-1">
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            Connected
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "11px",
+              color: "#4ade80",
+              flexShrink: 0,
+              marginTop: "2px",
+            }}
+          >
+            <span style={{ fontSize: "13px" }}>&#10003;</span>
+            connected
           </span>
         )}
       </div>
 
       {/* Placeholder fields */}
-      <div className="flex flex-col gap-3">
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {card.placeholders.map((ph) => {
           const cloudValue = card.filledValues[ph.name];
-          // Cloud-filled: boolean true means filled (masked), string means actual value
           const isFilled =
-            cloudValue === true || (typeof cloudValue === "string" && cloudValue.length > 0);
+            cloudValue === true ||
+            (typeof cloudValue === "string" && cloudValue.length > 0);
           const displayValue =
             typeof cloudValue === "string" ? maskValue(cloudValue) : null;
 
           if (isFilled) {
-            // Read-only filled field
+            // Cloud-filled field — read-only with green checkmark
             return (
               <div key={ph.name}>
-                <label className="block text-xs font-medium text-white/50 mb-1">
+                <div
+                  style={{
+                    fontSize: "10px",
+                    color: "#666",
+                    marginBottom: "3px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
                   {ph.label}
-                </label>
-                <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-                  <svg
-                    className="w-4 h-4 text-emerald-400 shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(74, 222, 128, 0.06)",
+                    border: "1px solid rgba(74, 222, 128, 0.2)",
+                    borderRadius: "4px",
+                    padding: "6px 10px",
+                  }}
+                >
+                  <span style={{ color: "#4ade80", fontSize: "12px" }}>
+                    &#10003;
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: "#4ade80",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M4.5 12.75l6 6 9-13.5"
-                    />
-                  </svg>
-                  <span className="text-sm text-emerald-300 font-mono truncate">
-                    {displayValue ?? "Filled"}
+                    {displayValue ?? "filled"}
                   </span>
                 </div>
               </div>
@@ -180,42 +254,118 @@ function ConnectionCard({
 
           return (
             <div key={ph.name}>
-              <label className="block text-xs font-medium text-white/50 mb-1">
+              <div
+                style={{
+                  fontSize: "10px",
+                  color: "#666",
+                  marginBottom: "3px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                }}
+              >
                 {ph.label}
-              </label>
-              <input
-                type={ph.type === "secret" ? "password" : "text"}
-                value={localVal}
-                onChange={(e) => handleChange(ph.name, e.target.value)}
-                placeholder={`Enter ${ph.label.toLowerCase()}`}
-                className={`w-full rounded-lg border px-3 py-2 text-sm bg-white/5 text-white placeholder:text-white/30 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 ${
-                  hasSavedLocal
-                    ? "border-emerald-500/30"
-                    : "border-white/10"
-                }`}
-              />
-              {hasSavedLocal && !localVal && (
-                <p className="text-xs text-emerald-400/70 mt-0.5">
-                  Previously saved locally
-                </p>
+              </div>
+              {canManualFill ? (
+                <>
+                  <input
+                    type={ph.type === "secret" ? "password" : "text"}
+                    value={localVal}
+                    onChange={(e) => handleChange(ph.name, e.target.value)}
+                    placeholder={`enter ${ph.label.toLowerCase()}`}
+                    style={{
+                      width: "100%",
+                      background: "#0a0a0a",
+                      border: `1px solid ${hasSavedLocal ? "rgba(74, 222, 128, 0.3)" : "#222"}`,
+                      borderRadius: "4px",
+                      padding: "6px 10px",
+                      fontSize: "12px",
+                      color: "#e0e0e0",
+                      fontFamily: terminalFont,
+                      outline: "none",
+                      transition: "border-color 0.15s",
+                      boxSizing: "border-box",
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor =
+                        "rgba(74, 222, 128, 0.4)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = hasSavedLocal
+                        ? "rgba(74, 222, 128, 0.3)"
+                        : "#222";
+                    }}
+                  />
+                  {hasSavedLocal && !localVal && (
+                    <div
+                      style={{
+                        fontSize: "10px",
+                        color: "rgba(74, 222, 128, 0.6)",
+                        marginTop: "2px",
+                      }}
+                    >
+                      previously saved locally
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div
+                  style={{
+                    background: "#0a0a0a",
+                    border: "1px solid #222",
+                    borderRadius: "4px",
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    color: "#555",
+                  }}
+                >
+                  connect with Prestige Cloud to fill
+                </div>
               )}
             </div>
           );
         })}
       </div>
 
-      {/* Save button: only show when at least one field is NOT cloud-filled */}
-      {!allFilled && (
-        <div className="flex items-center justify-between pt-1">
-          <p className="text-xs text-white/30">Enter values manually</p>
+      {/* Save button: only show when manual fill is allowed and at least one field is NOT cloud-filled */}
+      {!allFilled && canManualFill && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingTop: "4px",
+            borderTop: "1px solid #1a1a1a",
+          }}
+        >
+          <span style={{ fontSize: "10px", color: "#555" }}>
+            manual entry
+          </span>
           <button
+            type="button"
             onClick={handleSave}
-            className="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-default"
-            disabled={
-              saved || Object.values(draft).every((v) => !v.trim())
-            }
+            disabled={saved || Object.values(draft).every((v) => !v.trim())}
+            style={{
+              background: saved
+                ? "rgba(74, 222, 128, 0.12)"
+                : "rgba(74, 222, 128, 0.08)",
+              border: `1px solid ${saved ? "rgba(74, 222, 128, 0.4)" : "rgba(74, 222, 128, 0.2)"}`,
+              borderRadius: "4px",
+              padding: "4px 14px",
+              fontFamily: terminalFont,
+              fontSize: "11px",
+              color: saved ? "#4ade80" : "#aaa",
+              cursor:
+                saved || Object.values(draft).every((v) => !v.trim())
+                  ? "default"
+                  : "pointer",
+              opacity:
+                saved || Object.values(draft).every((v) => !v.trim())
+                  ? 0.5
+                  : 1,
+              transition: "all 0.15s",
+            }}
           >
-            {saved ? "Saved" : "Save"}
+            {saved ? "saved" : "save"}
           </button>
         </div>
       )}
@@ -224,36 +374,58 @@ function ConnectionCard({
 }
 
 // ---------------------------------------------------------------------------
-// Sync Banner
+// Terminal-style Sync Banner
 // ---------------------------------------------------------------------------
 
 function SyncBanner({ onConnect }: { onConnect: () => void }) {
   return (
-    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-      <div className="flex items-center gap-3 min-w-0">
-        <svg
-          className="w-5 h-5 text-emerald-400 shrink-0"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.338-2.32 3.75 3.75 0 013.81 4.97A4.5 4.5 0 0118 19.5H6.75z"
-          />
-        </svg>
-        <p className="text-sm text-white/70">
-          <span className="text-white font-medium">Connect with Prestige Cloud</span>{" "}
-          to sync your API credentials from your vault.
-        </p>
+    <div
+      style={{
+        background: "#111",
+        border: "1px solid rgba(74, 222, 128, 0.2)",
+        borderRadius: "8px",
+        padding: "14px 16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+        fontFamily: terminalFont,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <span style={{ color: "#4ade80", fontSize: "14px" }}>&#9729;</span>
+        <span style={{ fontSize: "12px", color: "#888" }}>
+          <span style={{ color: "#e0e0e0", fontWeight: 500 }}>
+            connect with Prestige Cloud
+          </span>{" "}
+          to sync credentials from your vault
+        </span>
       </div>
       <button
+        type="button"
         onClick={onConnect}
-        className="shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-500 transition-colors cursor-pointer"
+        style={{
+          background: "rgba(74, 222, 128, 0.08)",
+          border: "1px solid rgba(74, 222, 128, 0.3)",
+          borderRadius: "4px",
+          padding: "5px 16px",
+          fontFamily: terminalFont,
+          fontSize: "11px",
+          color: "#4ade80",
+          cursor: "pointer",
+          flexShrink: 0,
+          transition: "all 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(74, 222, 128, 0.15)";
+          e.currentTarget.style.borderColor = "#4ade80";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "rgba(74, 222, 128, 0.08)";
+          e.currentTarget.style.borderColor = "rgba(74, 222, 128, 0.3)";
+        }}
       >
-        Connect
+        $ connect
       </button>
     </div>
   );
@@ -276,33 +448,52 @@ export default function ConnectionsPage() {
   // Server-side connections (fetched when authenticated)
   const [connections, setConnections] = useState<Connection[]>([]);
   // Locally-stored manual values keyed by templateId
-  const [allManual, setAllManual] = useState<Record<string, Record<string, string>>>({});
+  const [allManual, setAllManual] = useState<
+    Record<string, Record<string, string>>
+  >({});
   // Loading & error state
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Dynamic public config fetched from the server — controls which
+  // templates to show, whether to show the account prompt banner, etc.
+  const [publicConfig, setPublicConfig] = useState<PublicConfig | null>(null);
 
   // Track whether the initial data has been loaded at least once so we can
   // suppress the loading skeleton on background re-fetches.
   const hasLoadedOnce = useRef(false);
 
-  // ── Load manual values from localStorage on mount ──────────────────
+  // -- Load manual values from localStorage on mount --
   useEffect(() => {
     setAllManual(client.getAllManualValues());
   }, [client]);
 
-  // ── Fetch connections / public config depending on auth state ───────
+  // -- Fetch public config (always, even when authenticated) --
+  // This ensures we respect the latest integrationConfig from the
+  // developer dashboard (selectedTemplateIds, showAccountPrompt,
+  // requireAccount, theme).
+  const fetchPublicConfig = useCallback(async () => {
+    try {
+      const cfg = await client.getPublicAppConfig();
+      setPublicConfig(cfg);
+    } catch {
+      // Non-critical — fall back to appConfig from auth hook
+    }
+  }, [client]);
+
+  // -- Fetch connections / public config depending on auth state --
   const fetchData = useCallback(async () => {
-    // Only show the full loading state on the very first fetch
     if (!hasLoadedOnce.current) setLoading(true);
     setFetchError(null);
 
     try {
+      // Always fetch the latest public config
+      await fetchPublicConfig();
+
       if (isConnected) {
         const conns = await client.getConnections();
         setConnections(conns);
       } else {
-        // In disconnected mode we rely solely on appConfig.templates
-        // which usePrestigeAuth already fetches via getPublicAppConfig().
         setConnections([]);
       }
     } catch (err) {
@@ -311,16 +502,17 @@ export default function ConnectionsPage() {
       setLoading(false);
       hasLoadedOnce.current = true;
     }
-  }, [isConnected, client]);
+  }, [isConnected, client, fetchPublicConfig]);
 
   // Fetch on mount and whenever auth state changes
   useEffect(() => {
-    // Reset for fresh state when auth changes
     hasLoadedOnce.current = false;
     void fetchData();
   }, [fetchData]);
 
-  // ── Re-fetch when the tab regains focus (visibilitychange) ─────────
+  // -- Re-fetch when the tab regains focus (visibilitychange) --
+  // This ensures changes made in the Prestige Cloud dashboard
+  // (e.g. toggling templates, changing theme) are picked up immediately.
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
@@ -332,7 +524,7 @@ export default function ConnectionsPage() {
       document.removeEventListener("visibilitychange", handleVisibility);
   }, [fetchData]);
 
-  // ── Save manual values handler ─────────────────────────────────────
+  // -- Save manual values handler --
   const handleSaveManual = useCallback(
     (templateId: string, values: Record<string, string>) => {
       client.saveManualValues(templateId, values);
@@ -341,14 +533,22 @@ export default function ConnectionsPage() {
     [client],
   );
 
-  // ── Build the unified card list ────────────────────────────────────
+  // -- Resolve effective config: prefer publicConfig, fall back to appConfig --
+  const effectiveConfig = publicConfig ?? appConfig;
+  const showAccountPrompt = effectiveConfig?.showAccountPrompt ?? true;
+  const requireAccount = effectiveConfig?.requireAccount ?? false;
+
+  // -- Build the unified card list, filtered by the public config --
   const cards: CardData[] = (() => {
+    // Determine which template IDs to show from the public config
+    const allowedTemplateIds = publicConfig?.templates?.map(
+      (t) => t.templateId,
+    );
+
     if (isConnected && connections.length > 0) {
       // Build cards from the connections API response (has live fill status)
-      return connections.map((conn) => {
-        // The Connection type does not carry placeholders directly.
-        // Merge placeholder metadata from appConfig.templates if available.
-        const tpl = appConfig?.templates.find(
+      const connCards = connections.map((conn) => {
+        const tpl = effectiveConfig?.templates.find(
           (t) => t.templateId === conn.templateId,
         );
         return {
@@ -356,20 +556,32 @@ export default function ConnectionsPage() {
           templateName: conn.templateName,
           templateSlug: conn.templateSlug,
           type: conn.type,
-          placeholders: tpl?.placeholders ?? Object.keys(conn.filledValues).map((k) => ({
-            name: k,
-            label: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-            type: "text",
-          })),
+          placeholders:
+            tpl?.placeholders ??
+            Object.keys(conn.filledValues).map((k) => ({
+              name: k,
+              label: k
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase()),
+              type: "text",
+            })),
           filled: conn.hasConnection,
           filledValues: conn.filledValues,
         };
       });
+
+      // Filter to only the templates selected in the dashboard config
+      if (allowedTemplateIds && allowedTemplateIds.length > 0) {
+        return connCards.filter((c) =>
+          allowedTemplateIds.includes(c.templateId),
+        );
+      }
+      return connCards;
     }
 
-    // Disconnected: fall back to appConfig.templates (public config)
-    if (appConfig?.templates) {
-      return appConfig.templates.map((tpl) => ({
+    // Disconnected: fall back to effectiveConfig templates (public config)
+    if (effectiveConfig?.templates) {
+      return effectiveConfig.templates.map((tpl) => ({
         templateId: tpl.templateId,
         templateName: tpl.templateName,
         templateSlug: tpl.templateSlug,
@@ -383,56 +595,139 @@ export default function ConnectionsPage() {
     return [];
   })();
 
-  // ── Render ─────────────────────────────────────────────────────────
+  // -- Derive theme accent color from config --
+  const themeAccent =
+    effectiveConfig?.theme?.primaryColor ?? "#4ade80";
+
+  // -- Render --
   return (
     <PageShell>
-      <div className="space-y-6">
-        {/* Page header */}
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Connections</h1>
-          <p className="text-white/50 text-sm mt-1">
-            Manage your API connections. Enter credentials manually or sync them
-            from your Prestige Cloud vault.
-          </p>
+      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        {/* Page header — terminal style */}
+        <div style={{ marginBottom: "20px" }}>
+          <div
+            style={{
+              fontFamily: terminalFont,
+              fontSize: "14px",
+              color: themeAccent,
+              marginBottom: "4px",
+            }}
+          >
+            $ connections --list
+          </div>
+          <div
+            style={{
+              fontFamily: terminalFont,
+              fontSize: "12px",
+              color: "#666",
+            }}
+          >
+            manage your api connections. enter credentials manually or sync from
+            your prestige cloud vault.
+          </div>
         </div>
 
-        {/* Sync banner (only shown when disconnected) */}
-        {!isConnected && state !== "loading" && (
-          <SyncBanner onConnect={() => void login()} />
-        )}
+        {/* Sync banner (only shown when disconnected and showAccountPrompt is enabled) */}
+        {!isConnected &&
+          state !== "loading" &&
+          showAccountPrompt && (
+            <div style={{ marginBottom: "16px" }}>
+              <SyncBanner onConnect={() => void login()} />
+            </div>
+          )}
 
         {/* Error banner */}
         {fetchError && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-5 py-3 text-sm text-red-300">
-            Failed to load connections: {fetchError}
+          <div
+            style={{
+              background: "#111",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "8px",
+              padding: "10px 14px",
+              fontFamily: terminalFont,
+              fontSize: "12px",
+              color: "#ef4444",
+              marginBottom: "16px",
+            }}
+          >
+            error: failed to load connections — {fetchError}
           </div>
         )}
 
-        {/* Loading skeleton */}
+        {/* Loading skeleton — terminal style */}
         {loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
+              gap: "12px",
+            }}
+          >
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="rounded-xl border border-white/10 bg-white/5 p-6 animate-pulse"
+                style={{
+                  background: "#111",
+                  border: "1px solid #222",
+                  borderRadius: "8px",
+                  padding: "16px",
+                }}
               >
-                <div className="h-5 w-40 bg-white/10 rounded mb-3" />
-                <div className="h-4 w-24 bg-white/10 rounded mb-5" />
-                <div className="h-9 w-full bg-white/10 rounded mb-3" />
-                <div className="h-9 w-full bg-white/10 rounded" />
+                <div
+                  style={{
+                    height: "14px",
+                    width: "160px",
+                    background: "#1a1a1a",
+                    borderRadius: "3px",
+                    marginBottom: "12px",
+                  }}
+                />
+                <div
+                  style={{
+                    height: "10px",
+                    width: "80px",
+                    background: "#1a1a1a",
+                    borderRadius: "3px",
+                    marginBottom: "16px",
+                  }}
+                />
+                <div
+                  style={{
+                    height: "28px",
+                    width: "100%",
+                    background: "#1a1a1a",
+                    borderRadius: "3px",
+                    marginBottom: "8px",
+                  }}
+                />
+                <div
+                  style={{
+                    height: "28px",
+                    width: "100%",
+                    background: "#1a1a1a",
+                    borderRadius: "3px",
+                  }}
+                />
               </div>
             ))}
           </div>
         )}
 
-        {/* Connection cards grid */}
+        {/* Connection cards grid — 2 columns */}
         {!loading && cards.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
+              gap: "12px",
+            }}
+          >
             {cards.map((card) => (
               <ConnectionCard
                 key={card.templateId}
                 card={card}
                 manualValues={allManual[card.templateId] ?? {}}
+                requireAccount={requireAccount}
                 onSaveManual={handleSaveManual}
               />
             ))}
@@ -441,23 +736,24 @@ export default function ConnectionsPage() {
 
         {/* Empty state */}
         {!loading && cards.length === 0 && !fetchError && (
-          <div className="rounded-xl border border-white/10 bg-white/5 px-6 py-16 text-center">
-            <svg
-              className="w-10 h-10 text-white/20 mx-auto mb-3"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
+          <div
+            style={{
+              background: "#111",
+              border: "1px solid #222",
+              borderRadius: "8px",
+              padding: "48px 16px",
+              textAlign: "center",
+              fontFamily: terminalFont,
+            }}
+          >
+            <div
+              style={{ fontSize: "12px", color: "#555", marginBottom: "4px" }}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.856-2.07a4.5 4.5 0 00-6.364-6.364L4.5 8.257m6.364 6.364L15 10.5"
-              />
-            </svg>
-            <p className="text-white/40 text-sm">
-              No API templates have been configured for this app yet.
-            </p>
+              no api templates configured
+            </div>
+            <div style={{ fontSize: "11px", color: "#333" }}>
+              the developer has not added any templates to this app yet
+            </div>
           </div>
         )}
       </div>
