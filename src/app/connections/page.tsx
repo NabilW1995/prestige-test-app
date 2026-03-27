@@ -47,6 +47,8 @@ interface PublicConfig {
   appName: string;
   showAccountPrompt: boolean;
   requireAccount: boolean;
+  syncMode?: "two_way" | "one_way" | "proxy_only" | "manual_fill";
+  enabledFeatures?: Record<string, boolean>;
   templates: AppConfig["templates"];
   theme?: AppConfig["theme"];
 }
@@ -88,11 +90,13 @@ function ConnectionCard({
   card,
   manualValues,
   requireAccount,
+  proxyOnly,
   onSaveManual,
 }: {
   card: CardData;
   manualValues: Record<string, string>;
   requireAccount: boolean;
+  proxyOnly: boolean;
   onSaveManual: (templateId: string, values: Record<string, string>) => void;
 }) {
   // Local draft state for manual form inputs.
@@ -122,7 +126,7 @@ function ConnectionCard({
   const allFilled = card.filled;
 
   // Determine whether manual fill is allowed
-  const canManualFill = !requireAccount;
+  const canManualFill = !requireAccount && !proxyOnly;
 
   return (
     <div
@@ -536,6 +540,9 @@ export default function ConnectionsPage() {
   const effectiveConfig = publicConfig ?? appConfig;
   const showAccountPrompt = effectiveConfig?.showAccountPrompt ?? true;
   const requireAccount = effectiveConfig?.requireAccount ?? false;
+  const syncMode: string = (publicConfig as PublicConfig | null)?.syncMode ?? "manual_fill";
+  const isProxyOnly = syncMode === "proxy_only";
+  const isAutoFill = syncMode === "two_way" || syncMode === "one_way";
 
   // -- Build the unified card list, filtered by the public config --
   const cards: CardData[] = (() => {
@@ -617,21 +624,61 @@ export default function ConnectionsPage() {
               fontFamily: terminalFont,
               fontSize: "12px",
               color: "#666",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
             }}
           >
-            manage your api connections. enter credentials manually or sync from
-            your prestige cloud vault.
+            <span>
+              {isProxyOnly
+                ? "api connections are proxied server-side. no credentials needed."
+                : isAutoFill
+                  ? "credentials auto-filled from your prestige cloud vault."
+                  : "enter credentials manually or connect to sync from vault."}
+            </span>
+            <span
+              style={{
+                fontSize: "10px",
+                color: "#444",
+                background: "#1a1a1a",
+                padding: "2px 6px",
+                borderRadius: "3px",
+              }}
+            >
+              mode: {syncMode.replace("_", "-")}
+            </span>
           </div>
         </div>
 
-        {/* Sync banner (only shown when disconnected and showAccountPrompt is enabled) */}
+        {/* Sync banner (only shown when disconnected, not proxy_only, and showAccountPrompt is enabled) */}
         {!isConnected &&
+          !isProxyOnly &&
           state !== "loading" &&
           showAccountPrompt && (
             <div style={{ marginBottom: "16px" }}>
               <SyncBanner onConnect={() => void login()} />
             </div>
           )}
+
+        {/* Proxy-only info banner */}
+        {isProxyOnly && (
+          <div
+            style={{
+              background: "#111",
+              border: "1px solid #222",
+              borderRadius: "8px",
+              padding: "14px 16px",
+              fontFamily: terminalFont,
+              fontSize: "12px",
+              color: "#888",
+              marginBottom: "16px",
+            }}
+          >
+            <span style={{ color: themeAccent }}>proxy mode:</span> all API requests
+            are proxied through Prestige Cloud server-side. No credentials are exposed
+            to the client.
+          </div>
+        )}
 
         {/* Error banner */}
         {fetchError && (
@@ -725,6 +772,7 @@ export default function ConnectionsPage() {
                 card={card}
                 manualValues={allManual[card.templateId] ?? {}}
                 requireAccount={requireAccount}
+                proxyOnly={isProxyOnly}
                 onSaveManual={handleSaveManual}
               />
             ))}
